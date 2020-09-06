@@ -1,5 +1,5 @@
 {
-  "name": "anywhereify",
+  "name": "@react-native-anywhere/anywhereify",
   "version": "0.0.1-alpha.0",
   "description": "🔧 Converts any project dependency into a React Native compatible import.",
   "main": "dist",

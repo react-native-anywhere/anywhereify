@@ -8,12 +8,13 @@ const browserify = require("browserify");
 const minify = require("babel-minify");
 const camel = require("camelcase");
 
-const createStub = ({ pkg, pkgName }) => `
+const createStub = ({pkg, pkgName}) => `
 var ${pkgName} = require("${pkg}");
 module.exports = ${pkgName};
 `.trim();
 
-const restructure = async (outFile, { pkg, pkgName }) => {
+const restructure = async (outFile, {pkg, pkgName}) => {
+  // TODO: enforce polyfill
   const {code} = minify(
     `
 var ${pkgName};
@@ -29,22 +30,20 @@ module.exports = ${pkgName};
   await fs.writeFileSync(outFile, code);
 };
 
-async function anywhereify({ pkg }) {
+async function anywhereify({pkg}) {
   const tempDir = resolve(tmpdir(), nanoid());
   const pkgName = camel(pkg);
   const stubFile = resolve(tempDir, "stub.js");
   const outFile = resolve(tempDir, "index.js");
   const resultFile = "./dist/index.js";
 
-  console.log({ tempDir, pkgName, stubFile, outFile });
-
   try {
     await fse.removeSync(dirname(resultFile));
-    await fs.mkdirSync(dirname(resultFile), { recursive: true });
+    await fs.mkdirSync(dirname(resultFile), {recursive: true});
 
-    await fs.mkdirSync(tempDir, { recursive: true });
-    await npm.install([pkg], { cwd: tempDir, save: true });
-    await fs.writeFileSync(stubFile, createStub({ pkg, pkgName }));
+    await fs.mkdirSync(tempDir, {recursive: true});
+    await npm.install([pkg], {cwd: tempDir, save: true});
+    await fs.writeFileSync(stubFile, createStub({pkg, pkgName}));
     
     const bundler = browserify();
     bundler.add(stubFile);
@@ -58,9 +57,8 @@ async function anywhereify({ pkg }) {
       },
     );
 
-    await restructure(outFile, { pkg, pkgName });
+    await restructure(outFile, {pkg, pkgName});
     await fse.moveSync(outFile, resultFile);
-
   } catch (e) {
     console.error(e);
   } finally {
