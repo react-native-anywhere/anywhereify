@@ -8,7 +8,9 @@ const browserify = require("browserify");
 const minify = require("babel-minify");
 const camel = require("camelcase");
 
-const createStub = ({pkg, pkgName}) => `
+const createStub = ({pkg, pkgName, polyfills}) => `
+${polyfills.map(polyfill => `require("${polyfill}");`)}
+
 var ${pkgName} = require("${pkg}");
 module.exports = ${pkgName};
 `.trim();
@@ -30,7 +32,7 @@ module.exports = ${pkgName};
   await fs.writeFileSync(outFile, code);
 };
 
-async function anywhereify({pkg}) {
+async function anywhereify({pkg, polyfills}) {
   const tempDir = resolve(tmpdir(), nanoid());
   const pkgName = camel(pkg);
   const stubFile = resolve(tempDir, "stub.js");
@@ -42,8 +44,8 @@ async function anywhereify({pkg}) {
     await fs.mkdirSync(dirname(resultFile), {recursive: true});
 
     await fs.mkdirSync(tempDir, {recursive: true});
-    await npm.install([pkg], {cwd: tempDir, save: true});
-    await fs.writeFileSync(stubFile, createStub({pkg, pkgName}));
+    await npm.install([pkg, ...polyfills], {cwd: tempDir, save: true});
+    await fs.writeFileSync(stubFile, createStub({pkg, pkgName, polyfills}));
     
     const bundler = browserify();
     bundler.add(stubFile);
