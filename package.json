@@ -7,6 +7,9 @@
   "author": "Alex Thomas (@cawfree) <alex@getuni.app>",
   "license": "MIT",
   "private": false,
+  "bin": {
+    "anywhereify": "./bin/anywhereify.js"
+  },
   "dependencies": {
     "babel-minify": "^0.5.1",
     "browserify": "^16.5.2",
@@ -16,6 +19,8 @@
     "nanoid": "^3.1.12",
     "npm-programmatic": "^0.0.12",
     "os": "^0.1.1",
-    "path": "^0.12.7"
+    "path": "^0.12.7",
+    "type-check": "^0.4.0",
+    "yargs": "^15.4.1"
   }
 }

@@ -61,13 +61,11 @@ async function anywhereify({ pkg }) {
     await restructure(outFile, { pkg, pkgName });
     await fse.moveSync(outFile, resultFile);
 
-    console.log('finished bundle');
   } catch (e) {
     console.error(e);
   } finally {
     await fse.remove(tempDir);
   }
-  console.log('fini');
 }
 
-anywhereify({ pkg: "web3" });
+module.exports = anywhereify;
