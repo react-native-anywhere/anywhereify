@@ -6,7 +6,7 @@ const fse = require("fs-extra");
 const npm = require("npm-programmatic");
 const browserify = require("browserify");
 const camel = require("camelcase");
-//const minify = require("babel-minify");
+const minify = require("babel-minify");
 
 const createStub = ({pkg, pkgName, polyfills}) => `
 ${polyfills.map(polyfill => `require("${polyfill}");`)}
@@ -16,8 +16,8 @@ module.exports = ${pkgName};
 `.trim();
 
 const restructure = async (outFile, {pkg, pkgName}) => {
-  //const { code } = minify(
-    const code = `
+  const { code } = minify(
+    `
 var ${pkgName};
 
 ${(await fs.readFileSync(outFile, "utf8"))
@@ -25,9 +25,12 @@ ${(await fs.readFileSync(outFile, "utf8"))
   .replace(`module.exports = ${pkgName};`, "")}
 
 module.exports = ${pkgName};
-    `.trim();
-//    { mangle: false },
-//  );
+    `.trim(),
+    {
+      mangle: false,
+      regexpConstructors: false,
+    },
+  );
 
   await fs.writeFileSync(outFile, code);
 };
