@@ -34,7 +34,7 @@ module.exports = ${pkgName};
 
 async function anywhereify({pkg, polyfills}) {
   const tempDir = resolve(tmpdir(), nanoid());
-  const pkgName = camel(pkg);
+  const pkgName = camel(pkg.replace("/", " ").replace(/[^a-zA-Z0-9]/, ""));
   const stubFile = resolve(tempDir, "stub.js");
   const outFile = resolve(tempDir, "index.js");
   const resultFile = "./dist/index.js";
