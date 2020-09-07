@@ -1,6 +1,6 @@
 {
   "name": "@react-native-anywhere/anywhereify",
-  "version": "0.0.1-alpha.8",
+  "version": "0.0.1-alpha.9",
   "description": "🔧 Converts any project dependency into a React Native compatible import.",
   "main": "src",
   "repository": "https://github.com/react-native-anywhere/anywhereify",
