@@ -6,6 +6,8 @@ const fse = require("fs-extra");
 const npm = require("npm-programmatic");
 const browserify = require("browserify");
 const camel = require("camelcase");
+const minify = require("babel-minify");
+
 
 const createStub = ({pkg, pkgName, polyfills}) => `
 ${polyfills.map(polyfill => `require("${polyfill}");`)}
@@ -15,7 +17,8 @@ module.exports = ${pkgName};
 `.trim();
 
 const restructure = async (outFile, {pkg, pkgName}) => {
-  const code = `
+  const { code } = minify(
+    `
 var ${pkgName};
 
 ${(await fs.readFileSync(outFile, "utf8"))
@@ -23,15 +26,18 @@ ${(await fs.readFileSync(outFile, "utf8"))
   .replace(`module.exports = ${pkgName};`, "")}
 
 module.exports = ${pkgName};
-  `.trim();
+    `.trim(),
+    { mangle: false },
+  );
 
   await fs.writeFileSync(outFile, code);
 };
 
 async function anywhereify({pkg, polyfills}) {
+  // TODO: Create a nicer package name that would serve multiple imports.
   const pkgName = nanoid()
     .replace(/[^a-zA-Z]+/g, "");
-  console.log({pkgName});
+
   const tempDir = resolve(tmpdir(), pkgName);
   const stubFile = resolve(tempDir, "stub.js");
   const outFile = resolve(tempDir, "index.js");
