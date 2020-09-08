@@ -18,7 +18,7 @@ const {name: packageName} = require("../package");
 const defaultConfig = Object.freeze({
   exports: null,
   out: "node_modules/@react-native-anywhere/anywhere/dist",
-  target: dirname(dirname(resolve(`${root}`))),
+  target: resolve(`${root}`),
   minifyEnabled: true,
 });
 
