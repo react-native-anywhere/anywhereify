@@ -17,7 +17,8 @@ const {name: packageName} = require("../package");
 
 const defaultConfig = Object.freeze({
   exports: null,
-  out: "dist",
+  out: "node_modules/@react-native-anywhere/anywhere/dist",
+  minifyEnabled: true,
 });
 
 const shouldCheckDependencies = path => new Promise(resolve => depcheck(
@@ -26,13 +27,11 @@ const shouldCheckDependencies = path => new Promise(resolve => depcheck(
   resolve,
 ));
 
-const createTempProject = async ({ projectDir, packageJson, exports }) => {
+const createTempProject = async ({ projectDir, packageJson, exports, keys }) => {
   console.log({ projectDir });
   if (!fs.existsSync(projectDir)) {
     await fs.mkdirSync(projectDir, { recursive: true });
   }
-
-  const keys = exports.map((_, i) => `anywhereify_${i}`);
 
   const jsonFile = fs.readFileSync(packageJson, "utf-8");
 
@@ -48,7 +47,8 @@ const createTempProject = async ({ projectDir, packageJson, exports }) => {
   }));
 
   // XXX: Install the dependencies.
-  await npm.install([Object.keys(dependencies)], {save: true, cwd: projectDir });
+  // TODO: version
+  await npm.install(Object.keys(dependencies), {save: true, cwd: projectDir });
 
   /* allocate dirs to nest dedicated package-lock json */
   const subDir = resolve(projectDir, "sub");
@@ -63,19 +63,13 @@ const createTempProject = async ({ projectDir, packageJson, exports }) => {
 ${exports.map(
   ({name, alias}, i) => {
     if ((typeCheck("String", alias) && alias.length > 0)) {
-      return `const ${keys[i]} = require("${name}");`;
+      return `var ${keys[i]} = require("${name}");`;
     } else if (alias === undefined) {
       return `require("${name}");`;
     }
     throw new Error(`Expected non-empty String alias, or undefined, encountered ${JSON.stringify(alias)}.`);
   },
 ).join("\n")}
-
-module.exports = {
-${exports.map(
-  ({ name, alias }, i) => (!!alias) ? `  ["${alias}"]: ${keys[i]},` : null,
-).filter(e => !!e).join("\n")}
-};
   `.trim();
 
   await fs.writeFileSync(stubFile, content);
@@ -107,7 +101,6 @@ const shouldPreferSuperVersion = (superVersion, subVersion) => {
 const shouldGatherExternals = async ({parentDir, tempProjectDir, packages, subDir}) => {
 
   console.log({ tempProjectDir, subDir, packages });
-  
 
   const tempLockFile = resolve(tempProjectDir, "package-lock.json");
   const subLockFile = resolve(subDir, "package-lock.json");
@@ -140,14 +133,14 @@ const shouldGatherExternals = async ({parentDir, tempProjectDir, packages, subDi
     .map(([packageName]) => packageName);
 };
 
-const shouldBundle = async ({ stubFile, outFile, externals }) => {
+const shouldBundle = async ({stubFile, outFile, externals, exports, keys}) => {
   const bundler = browserify();
   bundler.add(stubFile);
 
   /* packages to ignore, already implemented by the parent */
   externals.forEach(external => bundler.external(external));
 
-  return new Promise(
+  await new Promise(
     resolve => {
       const stream = fs.createWriteStream(outFile);
       stream.on("finish", resolve);
@@ -155,6 +148,22 @@ const shouldBundle = async ({ stubFile, outFile, externals }) => {
         .bundle()
         .pipe(stream)
     },
+  );
+
+  // TODO: need better control and respect to keys, since we reference missing duplicates
+  return fs.writeFileSync(
+    outFile,
+    `
+${keys.map(key => `var ${key};`).join("\n")}
+
+${keys.reduce((e, key) => e.replace(`var ${key} =`, `${key} = `), fs.readFileSync(outFile, "utf-8"))}
+
+module.exports = {
+${exports.map(
+  ({ name, alias }, i) => (!!alias) ? `  ["${alias}"]: ${keys[i]},` : null,
+).filter(e => !!e).join("\n")}
+};
+    `.trim(),
   );
 };
 
@@ -180,7 +189,7 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
     throw new Error(`Expected a config Object, encountered ${maybeConfig}.`);
   }
 
-  const {...config} = deepmerge(defaultConfig, maybeConfig);
+  const {minifyEnabled, ...config} = deepmerge(defaultConfig, maybeConfig);
 
   const tempProjectDir = resolve(`${tmpdir()}`, nanoid());
 
@@ -196,20 +205,18 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
     throw new Error(`Expected non-empty String out, encountered ${out}.`);
   }
 
+  const keys = exports.map((_, i) => `anywhereify_${i}`);
   const outDir = resolve(maybeOut);
 
-  if (!fs.existsSync(outDir)) {
-    fs.mkdirSync(outDir, { recursive: true });
-  }
-
   try {
-    const { subDir, stubFile } = await createTempProject({ projectDir: tempProjectDir, packageJson: childPackageJson, exports });
+    const { subDir, stubFile } = await createTempProject({ projectDir: tempProjectDir, packageJson: childPackageJson, exports, keys});
 
     console.log({ stubFile });
 
     const bundleOutputFile = resolve(tempProjectDir, "bundle.js");
 
     const packages = exports.map(({name}) => name);
+    
 
     // XXX: Next, compare the package.json of the target file and compare with the dependencies of the runtime.
     //      We'll be able to skip these out if there is overlap, if we can assume the presence of certain dependencies.
@@ -217,22 +224,29 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
 
     console.log({ externals });
 
-    await shouldBundle({ stubFile, outFile: bundleOutputFile, externals });
+    await shouldBundle({ stubFile, outFile: bundleOutputFile, externals, exports, keys});
     console.log({ stubFile, bundleOutputFile });
 
-    await shouldMinifyInPlace({ path: bundleOutputFile });
-
-    // XXX: Finally, move to target location.
-    await fse.moveSync(bundleOutputFile, resolve(outDir, "index.js"));
+    if (minifyEnabled) {
+      await shouldMinifyInPlace({path: bundleOutputFile});
+    }
 
     console.log({ outDir });
+    if (fs.existsSync(outDir)) {
+      await fse.removeSync(outDir);
+    }
+    fs.mkdirSync(outDir, {recursive: true});
+
+    // XXX: Finally, move to target location.
+    await fs.copyFileSync(bundleOutputFile, resolve(outDir, "index.js"));
+
     console.log("✨", chalk.green(`Anywhereified your project in ${(Math.round((new Date().getTime() - t1) / 1000) * 100) / 100}s.`));
   } catch (e) {
     console.error(e);
   } finally {
     console.log("🧹", "Cleaning up...");
     if (fs.existsSync(tempProjectDir)) {
-      //await fse.removeSync(tempProjectDir);
+      await fse.removeSync(tempProjectDir);
     }
   }
 })();
