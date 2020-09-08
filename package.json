@@ -7,23 +7,24 @@
   "author": "Alex Thomas (@cawfree) <alex@getuni.app>",
   "license": "MIT",
   "private": false,
-  "scripts": {
-    "test": "node ./bin/anywhereify --package gsn --polyfills @react-native-anywhere/polyfill-base64 ; rm -rf ./example/node_modules/@react-native-anywhere/gsn/dist ; mv dist ./example/node_modules/@react-native-anywhere/gsn/dist"
-  },
+  "main": "dist",
   "bin": {
     "anywhereify": "./bin/anywhereify.js"
   },
   "dependencies": {
+    "app-root-path": "^3.0.0",
     "babel-minify": "^0.5.1",
     "browserify": "^16.5.2",
-    "camelcase": "^6.0.0",
+    "chalk": "^4.1.0",
+    "deepmerge": "^4.2.2",
     "fs": "^0.0.1-security",
     "fs-extra": "^9.0.1",
+    "lock-diff": "^0.7.0",
     "nanoid": "^3.1.12",
     "npm-programmatic": "^0.0.12",
     "os": "^0.1.1",
     "path": "^0.12.7",
-    "type-check": "^0.4.0",
-    "yargs": "^15.4.1"
+    "semver": "^7.3.2",
+    "type-check": "^0.4.0"
   }
 }
