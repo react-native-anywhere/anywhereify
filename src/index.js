@@ -18,6 +18,7 @@ const {name: packageName} = require("../package");
 const defaultConfig = Object.freeze({
   exports: null,
   out: "node_modules/@react-native-anywhere/anywhere/dist",
+  target: dirname(dirname(resolve(`${root}`))),
   minifyEnabled: true,
 });
 
@@ -174,7 +175,6 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
 
 (async () => {
   const t1 = new Date().getTime();
-  const parentDir = resolve(`${root}`);
   const childNodeModules = resolve(".", "node_modules");
   const childPackageJson = resolve(".", "package.json");
   const childAnywhereConfig = resolve(".", "anywhere.config.json");
@@ -195,7 +195,7 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
 
   console.log({ childNodeModules });
 
-  const { exports, out: maybeOut } = config;
+  const { exports, out: maybeOut, target: parentDir } = config;
 
   if (!Array.isArray(exports) || !exports.length) {
     throw new Error(`Expected non-empty Array exports, encountered ${JSON.stringify(exports)}.`);
@@ -207,6 +207,8 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
 
   const keys = exports.map((_, i) => `anywhereify_${i}`);
   const outDir = resolve(maybeOut);
+
+  console.log({ parentDir });
 
   try {
     const { subDir, stubFile } = await createTempProject({ projectDir: tempProjectDir, packageJson: childPackageJson, exports, keys});
