@@ -36,7 +36,6 @@ const shouldCheckDependencies = path => new Promise(resolve => depcheck(
 ));
 
 const createTempProject = async ({ projectDir, exports }) => {
-  console.log({ projectDir });
   if (!fs.existsSync(projectDir)) {
     await fs.mkdirSync(projectDir, { recursive: true });
   }
@@ -72,7 +71,6 @@ const shouldPreferSuperVersion = (superVersion, subVersion) => {
 };
 
 const shouldInstallPackages = async ({ packages, cwd }) => {
-  console.log({ packages, cwd });
   return npm.install(packages, { save: true, cwd });
 };
 
@@ -129,12 +127,8 @@ const shouldMinifyInPlace = ({ path }) => {
   const exports = sanitizeExports(maybeExports);
   const outDir = resolve(maybeOut);
 
-  console.log({ parentDir });
-
   try {
     const { stubFile } = await createTempProject({ projectDir: tempProjectDir, exports});
-
-    console.log({ stubFile });
 
     const bundleOutputFile = resolve(tempProjectDir, "bundle.js");
 
@@ -143,17 +137,9 @@ const shouldMinifyInPlace = ({ path }) => {
       cwd: tempProjectDir,
     });
 
-    console.log('fini');
-    console.log({ tempProjectDir });
-
-
     await shouldBundle({ stubFile, outFile: bundleOutputFile, exports, browserifyOptions});
-
-    console.log({ stubFile, bundleOutputFile });
-
     await shouldMinifyInPlace({path: bundleOutputFile});
 
-    console.log({ outDir });
     if (fs.existsSync(outDir)) {
       await fse.removeSync(outDir);
     }
