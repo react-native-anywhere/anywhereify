@@ -205,6 +205,8 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
     throw new Error(`Expected non-empty String out, encountered ${out}.`);
   }
 
+  fs.writeFileSync(resolve(`${root}`, "anywhere-out.txt"), JSON.stringify(config));
+
   const keys = exports.map((_, i) => `anywhereify_${i}`);
   const outDir = resolve(maybeOut);
 
