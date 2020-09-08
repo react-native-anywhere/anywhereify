@@ -33,8 +33,31 @@ const createTempProject = async ({ projectDir, packageJson, exports }) => {
   }
 
   const keys = exports.map((_, i) => `anywhereify_${i}`);
-  await fs.copyFileSync(packageJson, resolve(projectDir, "package.json"));
-  const stubFile = resolve(projectDir, "stub.js");
+
+  const jsonFile = fs.readFileSync(packageJson, "utf-8");
+
+  const { dependencies: maybeDependencies } = JSON.parse(jsonFile);
+
+  const dependencies = maybeDependencies || [];
+
+  console.log({ dependencies });
+
+  fs.writeFileSync(resolve(projectDir, "package.json"), JSON.stringify({
+    name: "tempProject",
+    dependencies,
+  }));
+
+  // XXX: Install the dependencies.
+  await npm.install([Object.keys(dependencies)], {save: true, cwd: projectDir });
+
+  /* allocate dirs to nest dedicated package-lock json */
+  const subDir = resolve(projectDir, "sub");
+
+  if (!fs.existsSync(subDir)) {
+    fs.mkdirSync(subDir, { recursive: true });
+  }
+
+  const stubFile = resolve(subDir, "stub.js");
 
   const content = `
 ${exports.map(
@@ -57,7 +80,7 @@ ${exports.map(
 
   await fs.writeFileSync(stubFile, content);
 
-  return { stubFile };
+  return { subDir, stubFile };
 };
 
 // XXX: Defines whether Browserify should not manually process a 
@@ -81,41 +104,32 @@ const shouldPreferSuperVersion = (superVersion, subVersion) => {
 };
 
 // XXX: Compares the dependencies provided by the parent to avoid bundling.
-const shouldGatherExternals = async ({ parentDir, tempProjectDir }) => {
+const shouldGatherExternals = async ({parentDir, tempProjectDir, packages, subDir}) => {
 
-  console.log('about to list');
-  console.log({ parentDir, tempProjectDir });
+  console.log({ tempProjectDir, subDir, packages });
+  
 
-  const superDependencies = await npm.list(parentDir);
-  const subDependencies = await npm.list(tempProjectDir);
-
-  /* allocate dirs to nest dedicated package-lock json */
-  const superDir = resolve(tempProjectDir, "super");
-  const subDir = resolve(tempProjectDir, "sub");
-
-  if (!fs.existsSync(superDir)) {
-    fs.mkdirSync(superDir, { recursive: true });
-  }
-  if (!fs.existsSync(subDir)) {
-    fs.mkdirSync(subDir, { recursive: true });
-  }
-
-  const superLockFile = resolve(superDir, "package-lock.json");
+  const tempLockFile = resolve(tempProjectDir, "package-lock.json");
   const subLockFile = resolve(subDir, "package-lock.json");
 
-  const superPackageFile = resolve(superDir, "package.json");
+  const tempPackageFile = resolve(tempProjectDir, "package.json");
   const subPackageFile = resolve(subDir, "package.json");
 
   // ensure npm installs to the appropriate location
-  await fs.writeFileSync(superPackageFile, JSON.stringify({ name: "super" }));
   await fs.writeFileSync(subPackageFile, JSON.stringify({ name: "sub" }));
 
-  console.log({ superDir, subDir });
+  const superDependencies = await npm.list(tempProjectDir);
+  console.log({ superDependencies });
 
-  await npm.install([...superDependencies].filter(e => (e !== packageName)), { save: true, cwd: superDir });
-  await npm.install([...subDependencies].filter(e => (e !== packageName)), { save: true, cwd: subDir });
+  /* copy the parentDir to a separate file */
+  console.log({ parentDir, tempProjectDir });
 
-  const lockDiff = diffLockFiles(JSON.parse(fs.readFileSync(superLockFile, "utf-8")), JSON.parse(fs.readFileSync(subLockFile, "utf-8")));
+  await npm.install([...packages].filter(e => (e !== packageName)), { save: true, cwd: subDir });
+  const subDependencies = await npm.list(subDir);
+  
+  console.log({ subDependencies });
+
+  const lockDiff = diffLockFiles(JSON.parse(fs.readFileSync(tempLockFile, "utf-8")), JSON.parse(fs.readFileSync(subLockFile, "utf-8")));
 
   // XXX: Returns the list of packages which we want to ignore with Browserify.
   return Object.entries(lockDiff)
@@ -152,7 +166,6 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
 (async () => {
   const t1 = new Date().getTime();
   const parentDir = resolve(`${root}`);
-  const parentNodeModules = resolve(parentDir, "node_modules");
   const childNodeModules = resolve(".", "node_modules");
   const childPackageJson = resolve(".", "package.json");
   const childAnywhereConfig = resolve(".", "anywhere.config.json");
@@ -171,12 +184,7 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
 
   const tempProjectDir = resolve(`${tmpdir()}`, nanoid());
 
-  console.log({ parentNodeModules, childNodeModules });
-
-  /* the dependencies of the package to anywhere decide the export format */
-  const { dependencies: maybeDependencies } = JSON.parse(fs.readFileSync(childPackageJson, "utf-8"));
-
-  const dependencies = (maybeDependencies || []);
+  console.log({ childNodeModules });
 
   const { exports, out: maybeOut } = config;
 
@@ -194,21 +202,18 @@ const shouldMinifyInPlace = ({ path }) => fs.writeFileSync(
     fs.mkdirSync(outDir, { recursive: true });
   }
 
-  console.log(exports);
-  console.log({ dependencies });
-
   try {
-    const { stubFile } = await createTempProject({ projectDir: tempProjectDir, packageJson: childPackageJson, exports });
+    const { subDir, stubFile } = await createTempProject({ projectDir: tempProjectDir, packageJson: childPackageJson, exports });
 
     console.log({ stubFile });
 
-    await npm.install(exports.map(({ name }) => name), {cwd: tempProjectDir, save: true});
-
     const bundleOutputFile = resolve(tempProjectDir, "bundle.js");
+
+    const packages = exports.map(({name}) => name);
 
     // XXX: Next, compare the package.json of the target file and compare with the dependencies of the runtime.
     //      We'll be able to skip these out if there is overlap, if we can assume the presence of certain dependencies.
-    const externals = await shouldGatherExternals({ parentDir, tempProjectDir });
+    const externals = await shouldGatherExternals({parentDir, tempProjectDir, packages, subDir});
 
     console.log({ externals });
 
