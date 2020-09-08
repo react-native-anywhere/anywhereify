@@ -20,6 +20,7 @@ const defaultConfig = Object.freeze({
   out: "node_modules/@react-native-anywhere/anywhere/dist",
   target: resolve(`${root}`),
   uglifyOptions: { ecma: 5 },
+  browserifyOptions: {}, 
 });
 
 const shouldCheckDependencies = path => new Promise(resolve => depcheck(
@@ -82,13 +83,13 @@ const shouldPreferSuperVersion = (superVersion, subVersion) => {
   return false;
 };
 
-const shouldBundle = async ({stubFile, outFile, exports, keys}) => {
+const shouldBundle = async ({stubFile, outFile, exports, keys, browserifyOptions}) => {
   await new Promise(
     resolve => {
       const stream = fs.createWriteStream(outFile);
       stream.on("finish", resolve);
 
-      return browserify(stubFile)
+      return browserify(stubFile, browserifyOptions)
         .add(stubFile)
         .bundle()
         .pipe(stream);
@@ -137,7 +138,7 @@ const shouldMinifyInPlace = ({ path, uglifyOptions }) => {
     throw new Error(`Expected a config Object, encountered ${maybeConfig}.`);
   }
 
-  const {uglifyOptions, ...config} = deepmerge(defaultConfig, maybeConfig);
+  const {uglifyOptions, browserifyOptions, ...config} = deepmerge(defaultConfig, maybeConfig);
 
   const tempProjectDir = resolve(`${tmpdir()}`, nanoid());
 
@@ -167,7 +168,7 @@ const shouldMinifyInPlace = ({ path, uglifyOptions }) => {
     
     await npm.install([...packages].filter(e => (e !== packageName)), { save: true, cwd: subDir });
 
-    await shouldBundle({ stubFile, outFile: bundleOutputFile, exports, keys});
+    await shouldBundle({ stubFile, outFile: bundleOutputFile, exports, keys, browserifyOptions});
     console.log({ stubFile, bundleOutputFile });
 
     await shouldMinifyInPlace({path: bundleOutputFile, uglifyOptions });
