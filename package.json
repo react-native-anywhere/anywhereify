@@ -10,6 +10,9 @@
   "bin": {
     "anywhereify": "./bin/anywhereify.js"
   },
+  "scripts": {
+    "test": "jest"
+  },
   "dependencies": {
     "@babel/polyfill": "^7.11.5",
     "app-root-path": "^3.0.0",
@@ -30,5 +33,8 @@
     "uglify-es": "^3.3.9",
     "uglify-js": "^3.10.4",
     "unreachable-branch-transform": "^0.5.1"
+  },
+  "devDependencies": {
+    "jest": "^26.4.2"
   }
 }

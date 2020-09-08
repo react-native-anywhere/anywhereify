@@ -11,15 +11,21 @@ const npm = require("npm-programmatic");
 const chalk = require("chalk");
 const {diff: diffLockFiles} = require("lock-diff/lib/index");
 const semver = require("semver");
-const {minify: uglify} = require("uglify-es");
+const minify = require("babel-minify");
 
-const {name: packageName} = require("../package");
+const {
+  sanitizeExports,
+  declareExports,
+  declareGlobalExports,
+  packages,
+  suppressScopedDeclarations,
+  generateModuleExports,
+} = require("./exports");
 
 const defaultConfig = Object.freeze({
   exports: null,
   out: "node_modules/@react-native-anywhere/anywhere/dist",
   target: resolve(`${root}`),
-  uglifyOptions: { ecma: 5 },
   browserifyOptions: {}, 
 });
 
@@ -29,37 +35,19 @@ const shouldCheckDependencies = path => new Promise(resolve => depcheck(
   resolve,
 ));
 
-const createTempProject = async ({ projectDir, exports, keys }) => {
+const createTempProject = async ({ projectDir, exports }) => {
   console.log({ projectDir });
   if (!fs.existsSync(projectDir)) {
     await fs.mkdirSync(projectDir, { recursive: true });
   }
 
-  /* allocate dirs to nest dedicated package-lock json */
-  const subDir = resolve(projectDir, "sub");
+  const packageJsonFile = resolve(projectDir, "package.json");
+  const stubFile = resolve(projectDir, "stub.js");
 
-  if (!fs.existsSync(subDir)) {
-    fs.mkdirSync(subDir, { recursive: true });
-  }
+  await fs.writeFileSync(packageJsonFile, JSON.stringify({ name: "temp-project" }));
+  await fs.writeFileSync(stubFile, declareExports(exports));
 
-  const stubFile = resolve(subDir, "stub.js");
-
-  const content = `
-${exports.map(
-  ({name, alias}, i) => {
-    if ((typeCheck("String", alias) && alias.length > 0)) {
-      return `var ${keys[i]} = require("${name}");`;
-    } else if (alias === undefined) {
-      return `require("${name}");`;
-    }
-    throw new Error(`Expected non-empty String alias, or undefined, encountered ${JSON.stringify(alias)}.`);
-  },
-).join("\n")}
-  `.trim();
-
-  await fs.writeFileSync(stubFile, content);
-
-  return { subDir, stubFile };
+  return { stubFile };
 };
 
 // XXX: Defines whether Browserify should not manually process a 
@@ -83,7 +71,12 @@ const shouldPreferSuperVersion = (superVersion, subVersion) => {
   return false;
 };
 
-const shouldBundle = async ({stubFile, outFile, exports, keys, browserifyOptions}) => {
+const shouldInstallPackages = async ({ packages, cwd }) => {
+  console.log({ packages, cwd });
+  return npm.install(packages, { save: true, cwd });
+};
+
+const shouldBundle = async ({stubFile, outFile, exports, browserifyOptions}) => {
   await new Promise(
     resolve => {
       const stream = fs.createWriteStream(outFile);
@@ -95,29 +88,18 @@ const shouldBundle = async ({stubFile, outFile, exports, keys, browserifyOptions
         .pipe(stream);
     },
   );
-
-  // TODO: need better control and respect to keys, since we reference missing duplicates
   return fs.writeFileSync(
     outFile,
     `
-${keys.map(key => `var ${key};`).join("\n")}
-
-${keys.reduce((e, key) => e.replace(`var ${key} =`, `${key} = `), fs.readFileSync(outFile, "utf-8"))}
-
-module.exports = {
-${exports.map(
-  ({ name, alias }, i) => (!!alias) ? `  ["${alias}"]: ${keys[i]},` : null,
-).filter(e => !!e).join("\n")}
-};
+${declareGlobalExports(exports)}
+${suppressScopedDeclarations(fs.readFileSync(outFile, "utf-8"), exports)}
+${generateModuleExports(exports)}
     `.trim(),
   );
 };
 
-const shouldMinifyInPlace = ({ path, uglifyOptions }) => {
-  const {code, error} = uglify(
-    fs.readFileSync(path, "utf-8"),
-    { ...uglifyOptions },
-  );
+const shouldMinifyInPlace = ({ path }) => {
+  const {code, error} = minify(fs.readFileSync(path, "utf-8"), {mangle: false, regexpConstructors: false});
   if (error) {
     throw new Error(error);
   }
@@ -138,40 +120,38 @@ const shouldMinifyInPlace = ({ path, uglifyOptions }) => {
     throw new Error(`Expected a config Object, encountered ${maybeConfig}.`);
   }
 
-  const {uglifyOptions, browserifyOptions, ...config} = deepmerge(defaultConfig, maybeConfig);
+  const {browserifyOptions, ...config} = deepmerge(defaultConfig, maybeConfig);
 
   const tempProjectDir = resolve(`${tmpdir()}`, nanoid());
 
-  const { exports, out: maybeOut, target: parentDir } = config;
+  const { exports: maybeExports, out: maybeOut, target: parentDir } = config;
 
-  if (!Array.isArray(exports) || !exports.length) {
-    throw new Error(`Expected non-empty Array exports, encountered ${JSON.stringify(exports)}.`);
-  } else if (!typeCheck("[{name:String,...}]", exports)) {
-    throw new Error(`Expected [{name:String,...}] exports, encountered ${JSON.stringify(exports)}.`);
-  } else if (!typeCheck("String", maybeOut) || !maybeOut.length) {
-    throw new Error(`Expected non-empty String out, encountered ${out}.`);
-  }
-
-  const keys = exports.map((_, i) => `anywhereify_${i}`);
+  const exports = sanitizeExports(maybeExports);
   const outDir = resolve(maybeOut);
 
   console.log({ parentDir });
 
   try {
-    const { subDir, stubFile } = await createTempProject({ projectDir: tempProjectDir, exports, keys});
+    const { stubFile } = await createTempProject({ projectDir: tempProjectDir, exports});
 
     console.log({ stubFile });
 
     const bundleOutputFile = resolve(tempProjectDir, "bundle.js");
 
-    const packages = exports.map(({name}) => name);
-    
-    await npm.install([...packages].filter(e => (e !== packageName)), { save: true, cwd: subDir });
+    await shouldInstallPackages({
+      packages: packages(exports).filter((e, i, orig) => (orig.indexOf(e) === i)),
+      cwd: tempProjectDir,
+    });
 
-    await shouldBundle({ stubFile, outFile: bundleOutputFile, exports, keys, browserifyOptions});
+    console.log('fini');
+    console.log({ tempProjectDir });
+
+
+    await shouldBundle({ stubFile, outFile: bundleOutputFile, exports, browserifyOptions});
+
     console.log({ stubFile, bundleOutputFile });
 
-    await shouldMinifyInPlace({path: bundleOutputFile, uglifyOptions });
+    await shouldMinifyInPlace({path: bundleOutputFile});
 
     console.log({ outDir });
     if (fs.existsSync(outDir)) {
