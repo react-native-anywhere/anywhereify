@@ -2,19 +2,20 @@
   "name": "@react-native-anywhere/anywhereify",
   "version": "0.0.1-alpha.14",
   "description": "🔧 Converts any project dependency into a React Native compatible import.",
-  "main": "src",
+  "main": "dist",
   "repository": "https://github.com/react-native-anywhere/anywhereify",
   "author": "Alex Thomas (@cawfree) <alex@getuni.app>",
   "license": "MIT",
   "private": false,
-  "main": "dist",
   "bin": {
     "anywhereify": "./bin/anywhereify.js"
   },
   "dependencies": {
+    "@babel/polyfill": "^7.11.5",
     "app-root-path": "^3.0.0",
     "babel-minify": "^0.5.1",
     "browserify": "^16.5.2",
+    "bundle-collapser": "^1.4.0",
     "chalk": "^4.1.0",
     "deepmerge": "^4.2.2",
     "fs": "^0.0.1-security",
@@ -25,6 +26,9 @@
     "os": "^0.1.1",
     "path": "^0.12.7",
     "semver": "^7.3.2",
-    "type-check": "^0.4.0"
+    "type-check": "^0.4.0",
+    "uglify-es": "^3.3.9",
+    "uglify-js": "^3.10.4",
+    "unreachable-branch-transform": "^0.5.1"
   }
 }
