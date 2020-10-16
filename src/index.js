@@ -1,7 +1,6 @@
 const root = require("app-root-path");
 const {resolve, dirname} = require("path");
 const {tmpdir} = require("os");
-const {nanoid} = require("nanoid");
 const {typeCheck} = require("type-check");
 const deepmerge = require("deepmerge");
 const fs = require("fs");
@@ -12,6 +11,7 @@ const chalk = require("chalk");
 const {diff: diffLockFiles} = require("lock-diff/lib/index");
 const semver = require("semver");
 const minify = require("babel-minify");
+const objectHash = require("object-hash");
 
 const {
   sanitizeExports,
@@ -118,43 +118,47 @@ const shouldMinifyInPlace = ({ path }) => {
     throw new Error(`Expected a config Object, encountered ${maybeConfig}.`);
   }
 
-  const {browserifyOptions, ...config} = deepmerge(defaultConfig, maybeConfig);
+  const bundledConfig = deepmerge(defaultConfig, maybeConfig);
+  const {browserifyOptions, ...config} = bundledConfig;
+  const bundledConfigHash = objectHash(bundledConfig);
 
-  const tempProjectDir = resolve(`${tmpdir()}`, nanoid());
+  const tempProjectDir = resolve(`${tmpdir()}`, bundledConfigHash);
 
   const { exports: maybeExports, out: maybeOut, target: parentDir } = config;
 
   const exports = sanitizeExports(maybeExports);
   const outDir = resolve(maybeOut);
+  const outLock = resolve(outDir, ".anywhere.config");
+  const outFile = resolve(outDir, "index.js");
+
+  const isPackagerRequired = !fs.existsSync(outLock) || fs.readFileSync(outLock, "utf-8") !== bundledConfigHash;
 
   try {
-    const { stubFile } = await createTempProject({ projectDir: tempProjectDir, exports});
-
-    const bundleOutputFile = resolve(tempProjectDir, "bundle.js");
-
-    await shouldInstallPackages({
-      packages: packages(exports).filter((e, i, orig) => (orig.indexOf(e) === i)),
-      cwd: tempProjectDir,
-    });
-
-    await shouldBundle({ stubFile, outFile: bundleOutputFile, exports, browserifyOptions});
-    await shouldMinifyInPlace({path: bundleOutputFile});
-
-    if (fs.existsSync(outDir)) {
-      await fse.removeSync(outDir);
+    if (isPackagerRequired) {
+      const { stubFile } = await createTempProject({ projectDir: tempProjectDir, exports});
+  
+      const bundleOutputFile = resolve(tempProjectDir, "bundle.js");
+  
+      await shouldInstallPackages({
+        packages: packages(exports).filter((e, i, orig) => (orig.indexOf(e) === i)),
+        cwd: tempProjectDir,
+      });
+  
+      await shouldBundle({ stubFile, outFile: bundleOutputFile, exports, browserifyOptions});
+      await shouldMinifyInPlace({path: bundleOutputFile});
+  
+      if (fs.existsSync(outDir)) {
+        await fse.removeSync(outDir);
+      }
+      fs.mkdirSync(outDir, {recursive: true});
+  
+      // XXX: Finally, move to target location.
+      await fs.copyFileSync(bundleOutputFile, outFile);
+      // XXX: Write the Hash.
+      await fs.writeFileSync(outLock, bundledConfigHash);
     }
-    fs.mkdirSync(outDir, {recursive: true});
-
-    // XXX: Finally, move to target location.
-    await fs.copyFileSync(bundleOutputFile, resolve(outDir, "index.js"));
-
     console.log("✨", chalk.green(`Anywhereified your project in ${(Math.round((new Date().getTime() - t1) / 1000) * 100) / 100}s.`));
   } catch (e) {
     console.error(e);
-  } finally {
-    console.log("🧹", "Cleaning up...");
-    if (fs.existsSync(tempProjectDir)) {
-      await fse.removeSync(tempProjectDir);
-    }
   }
 })();
